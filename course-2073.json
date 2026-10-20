@@ -1,0 +1,20 @@
+{
+  "schema": 1,
+  "courseId": 2073,
+  "repository": "LearningOS/2026a-rcore-laoba-01",
+  "user": "laoba-01",
+  "totalScore": 500,
+  "chapters": {
+    "ch3": {
+      "points": "7/7",
+      "score": 100,
+      "commit": "bb0699690d8ba5287a91ca3ed8ee53894704e8c4"
+    }
+  },
+  "score": 100,
+  "upload": {
+    "status": "pending",
+    "runId": "39365345199",
+    "runAttempt": "1"
+  }
+}
