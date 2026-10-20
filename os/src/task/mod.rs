@@ -14,7 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
-use crate::config::MAX_APP_NUM;
+use crate::config::{MAX_APP_NUM, MAX_SYSCALL_NUM};
 use crate::loader::{get_num_app, init_app_cx};
 use crate::sync::UPSafeCell;
 use lazy_static::*;
@@ -54,6 +54,7 @@ lazy_static! {
         let mut tasks = [TaskControlBlock {
             task_cx: TaskContext::zero_init(),
             task_status: TaskStatus::UnInit,
+            syscall_times: [0; MAX_SYSCALL_NUM],
         }; MAX_APP_NUM];
         for (i, task) in tasks.iter_mut().enumerate() {
             task.task_cx = TaskContext::goto_restore(init_app_cx(i));
@@ -72,6 +73,26 @@ lazy_static! {
 }
 
 impl TaskManager {
+    /// Add one to the syscall counter of the current task.
+    fn add_syscall_count(&self, id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        if id < MAX_SYSCALL_NUM {
+            inner.tasks[current].syscall_times[id] += 1;
+        }
+    }
+
+    /// Get the syscall counter of the current task.
+    fn get_syscall_count(&self, id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        if id < MAX_SYSCALL_NUM {
+            inner.tasks[current].syscall_times[id] as usize
+        } else {
+            0
+        }
+    }
+
     /// Run the first task in task list.
     ///
     /// Generally, the first task in task list is an idle task (we call it zero process later).
@@ -162,6 +183,16 @@ fn mark_current_exited() {
 pub fn suspend_current_and_run_next() {
     mark_current_suspended();
     run_next_task();
+}
+
+/// Record one invocation of syscall `id` for the current task.
+pub fn add_syscall_count(id: usize) {
+    TASK_MANAGER.add_syscall_count(id);
+}
+
+/// Get how many times the current task has called syscall `id`.
+pub fn get_syscall_count(id: usize) -> usize {
+    TASK_MANAGER.get_syscall_count(id)
 }
 
 /// Exit the current 'Running' task and run the next task in task list.
