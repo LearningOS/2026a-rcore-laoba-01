@@ -17,6 +17,7 @@ mod task;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
+use crate::mm::MemorySet;
 use alloc::vec::Vec;
 use lazy_static::*;
 use switch::__switch;
@@ -120,6 +121,13 @@ impl TaskManager {
         inner.tasks[inner.current_task].get_user_token()
     }
 
+    /// Get the current 'Running' task's memory set.
+    fn get_current_memory_set(&self) -> &'static mut MemorySet {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        unsafe { &mut *(&mut inner.tasks[cur].memory_set as *mut MemorySet) }
+    }
+
     /// Get the current 'Running' task's trap contexts.
     fn get_current_trap_cx(&self) -> &'static mut TrapContext {
         let inner = self.inner.exclusive_access();
@@ -191,6 +199,11 @@ pub fn exit_current_and_run_next() {
 /// Get the current 'Running' task's token.
 pub fn current_user_token() -> usize {
     TASK_MANAGER.get_current_token()
+}
+
+/// Get the current 'Running' task's memory set.
+pub fn current_memory_set() -> &'static mut MemorySet {
+    TASK_MANAGER.get_current_memory_set()
 }
 
 /// Get the current 'Running' task's trap contexts.
