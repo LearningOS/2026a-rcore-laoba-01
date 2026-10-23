@@ -14,6 +14,7 @@ mod switch;
 #[allow(clippy::module_inception)]
 mod task;
 
+use crate::config::MAX_SYSCALL_NUM;
 use crate::loader::{get_app_data, get_num_app};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
@@ -128,6 +129,26 @@ impl TaskManager {
         unsafe { &mut *(&mut inner.tasks[cur].memory_set as *mut MemorySet) }
     }
 
+    /// Count one more call of syscall `id` for the current task.
+    fn add_syscall_count(&self, id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        if id < MAX_SYSCALL_NUM {
+            inner.tasks[cur].syscall_times[id] += 1;
+        }
+    }
+
+    /// Get how many times the current task has called syscall `id`.
+    fn get_syscall_count(&self, id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let cur = inner.current_task;
+        if id < MAX_SYSCALL_NUM {
+            inner.tasks[cur].syscall_times[id] as usize
+        } else {
+            0
+        }
+    }
+
     /// Get the current 'Running' task's trap contexts.
     fn get_current_trap_cx(&self) -> &'static mut TrapContext {
         let inner = self.inner.exclusive_access();
@@ -204,6 +225,16 @@ pub fn current_user_token() -> usize {
 /// Get the current 'Running' task's memory set.
 pub fn current_memory_set() -> &'static mut MemorySet {
     TASK_MANAGER.get_current_memory_set()
+}
+
+/// Count one more call of syscall `id` for the current task.
+pub fn add_syscall_count(id: usize) {
+    TASK_MANAGER.add_syscall_count(id);
+}
+
+/// Get how many times the current task has called syscall `id`.
+pub fn get_syscall_count(id: usize) -> usize {
+    TASK_MANAGER.get_syscall_count(id)
 }
 
 /// Get the current 'Running' task's trap contexts.

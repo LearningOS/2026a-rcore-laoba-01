@@ -63,6 +63,67 @@ impl MemorySet {
             None,
         );
     }
+    /// Check whether `[start_vpn, end_vpn)` overlaps any existing area.
+    pub fn is_overlapped(&self, start_vpn: VirtPageNum, end_vpn: VirtPageNum) -> bool {
+        for area in &self.areas {
+            let area_start = area.vpn_range.get_start();
+            let area_end = area.vpn_range.get_end();
+            if start_vpn < area_end && area_start < end_vpn {
+                return true;
+            }
+        }
+        false
+    }
+    /// Unmap `[start_va, end_va)` from the area that fully contains it.
+    pub fn unmap(&mut self, start_va: VirtAddr, end_va: VirtAddr) -> isize {
+        let start_vpn = start_va.floor();
+        let end_vpn = end_va.ceil();
+
+        let idx = match self.areas.iter().position(|area| {
+            area.vpn_range.get_start() <= start_vpn && end_vpn <= area.vpn_range.get_end()
+        }) {
+            Some(i) => i,
+            None => return -1,
+        };
+
+        let a_start = self.areas[idx].vpn_range.get_start();
+        let a_end = self.areas[idx].vpn_range.get_end();
+
+        if start_vpn == a_start && end_vpn == a_end {
+            let mut area = self.areas.remove(idx);
+            area.unmap(&mut self.page_table);
+            return 0;
+        }
+        if start_vpn == a_start {
+            // Shrink from the head: unmap the front pages and move the start forward.
+            let area = &mut self.areas[idx];
+            for vpn in VPNRange::new(start_vpn, end_vpn) {
+                area.unmap_one(&mut self.page_table, vpn);
+            }
+            area.vpn_range = VPNRange::new(end_vpn, a_end);
+            return 0;
+        }
+        if end_vpn == a_end {
+            // Shrink from the tail.
+            let area = &mut self.areas[idx];
+            area.shrink_to(&mut self.page_table, start_vpn);
+            return 0;
+        }
+        // A hole in the middle: split into [a_start, start_vpn) and [end_vpn, a_end).
+        let area = &mut self.areas[idx];
+        let right = MapArea {
+            vpn_range: VPNRange::new(end_vpn, a_end),
+            data_frames: area.data_frames.split_off(&end_vpn),
+            map_type: area.map_type,
+            map_perm: area.map_perm,
+        };
+        for vpn in VPNRange::new(start_vpn, end_vpn) {
+            area.unmap_one(&mut self.page_table, vpn);
+        }
+        area.vpn_range = VPNRange::new(a_start, start_vpn);
+        self.areas.push(right);
+        0
+    }
     fn push(&mut self, mut map_area: MapArea, data: Option<&[u8]>) {
         map_area.map(&mut self.page_table);
         if let Some(data) = data {
