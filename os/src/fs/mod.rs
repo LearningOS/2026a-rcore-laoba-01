@@ -32,7 +32,18 @@ pub struct Stat {
     /// unused pad
     pad: [u64; 7],
 }
-
+impl Stat {
+      /// Create a new `Stat`.
+      pub fn new(dev: u64, ino: u64, mode: StatMode, nlink: u32) -> Self {
+          Self {
+              dev,
+              ino,
+              mode,
+              nlink,
+              pad: [0; 7],
+          }
+      }
+  }
 bitflags! {
     /// The mode of a inode
     /// whether a directory or a file
