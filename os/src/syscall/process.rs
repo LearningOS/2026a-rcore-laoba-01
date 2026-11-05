@@ -1,10 +1,11 @@
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_ref, translated_refmut, translated_str},
+    mm::{translated_ref, translated_refmut, translated_str, PageTable, PTEFlags, VirtAddr},
     task::{
         current_process, current_task, current_user_token, exit_current_and_run_next, pid2process,
         suspend_current_and_run_next, SignalFlags,
     },
+    timer::get_time_us,
 };
 use alloc::{string::String, sync::Arc, vec::Vec};
 
@@ -151,12 +152,32 @@ pub fn sys_kill(pid: usize, signal: u32) -> isize {
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
-pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
-    trace!(
-        "kernel:pid[{}] sys_get_time NOT IMPLEMENTED",
-        current_task().unwrap().process.upgrade().unwrap().getpid()
-    );
-    -1
+pub fn sys_get_time(ts: *mut TimeVal, _tz: usize) -> isize {
+    let us = get_time_us();
+    let sec = us / 1_000_000;
+    let usec = us % 1_000_000;
+    let va = ts as usize;
+    let page_table = PageTable::from_token(current_user_token());
+    // `usec` is written at `va + 8`, which may fall into the next page.
+    if !write_user_usize(&page_table, va, sec) || !write_user_usize(&page_table, va + 8, usec) {
+        return -1;
+    }
+    0
+}
+
+/// Write one `usize` into the user page containing `va`.
+fn write_user_usize(page_table: &PageTable, va: usize, value: usize) -> bool {
+    let vpn = VirtAddr::from(va).floor();
+    let off = VirtAddr::from(va).page_offset();
+    let pte = match page_table.translate(vpn) {
+        Some(pte) if pte.is_valid() && pte.flags().contains(PTEFlags::U) && pte.writable() => pte,
+        _ => return false,
+    };
+    unsafe {
+        let p = pte.ppn().get_bytes_array().as_mut_ptr().add(off) as *mut usize;
+        *p = value;
+    }
+    true
 }
 
 /// mmap syscall

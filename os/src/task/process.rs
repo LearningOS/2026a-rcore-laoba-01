@@ -49,6 +49,18 @@ pub struct ProcessControlBlockInner {
     pub semaphore_list: Vec<Option<Arc<Semaphore>>>,
     /// condvar list
     pub condvar_list: Vec<Option<Arc<Condvar>>>,
+    /// deadlock detection enabled
+    pub deadlock_detect: bool,
+    /// deadlock detection: owner tid of each mutex (None = free), indexed by mutex id
+    pub mutex_owner: Vec<Option<usize>>,
+    /// deadlock detection: mutex id each thread is blocked on, indexed by tid
+    pub mutex_request: Vec<Option<usize>>,
+    /// deadlock detection: initial resource count of each semaphore, indexed by sem id
+    pub sem_total: Vec<usize>,
+    /// deadlock detection: acquired count of each semaphore, indexed by [tid][sem id]
+    pub sem_alloc: Vec<Vec<usize>>,
+    /// deadlock detection: semaphore id each thread is blocked on, indexed by tid
+    pub sem_request: Vec<Option<usize>>,
 }
 
 impl ProcessControlBlockInner {
@@ -82,6 +94,45 @@ impl ProcessControlBlockInner {
     pub fn get_task(&self, tid: usize) -> Arc<TaskControlBlock> {
         self.tasks[tid].as_ref().unwrap().clone()
     }
+     pub fn deadlock_safe(&self) -> bool {
+          let sem_num = self.sem_total.len();
+          let thread_num = self.sem_request.len();
+
+          // work[i] = free instances of semaphore i
+          let mut work = self.sem_total.clone();
+          for row in self.sem_alloc.iter() {
+              for i in 0..sem_num.min(row.len()) {
+                  work[i] = work[i].saturating_sub(row[i]);
+              }
+          }
+
+          let mut finished = vec![false; thread_num];
+          loop {
+              let mut progress = false;
+              for t in 0..thread_num {
+                  if finished[t] {
+                      continue;
+                  }
+                  let can_finish = match self.sem_request[t] {
+                      None => true,
+                      Some(id) => work.get(id).copied().unwrap_or(0) > 0,
+                  };
+                  if can_finish {
+                      finished[t] = true;
+                      if let Some(row) = self.sem_alloc.get(t) {
+                          for i in 0..sem_num.min(row.len()) {
+                              work[i] += row[i];
+                          }
+                      }
+                      progress = true;
+                  }
+              }
+              if !progress {
+                  break;
+              }
+          }
+          finished.iter().all(|&f| f)
+      }
 }
 
 impl ProcessControlBlock {
@@ -119,6 +170,12 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect: false,
+                    mutex_owner: Vec::new(),
+                    mutex_request: Vec::new(),
+                    sem_total: Vec::new(),
+                    sem_alloc: Vec::new(),
+                    sem_request: Vec::new(),
                 })
             },
         });
@@ -245,6 +302,12 @@ impl ProcessControlBlock {
                     mutex_list: Vec::new(),
                     semaphore_list: Vec::new(),
                     condvar_list: Vec::new(),
+                    deadlock_detect: parent.deadlock_detect,
+                    mutex_owner: Vec::new(),
+                    mutex_request: Vec::new(),
+                    sem_total: Vec::new(),
+                    sem_alloc: Vec::new(),
+                    sem_request: Vec::new(),
                 })
             },
         });

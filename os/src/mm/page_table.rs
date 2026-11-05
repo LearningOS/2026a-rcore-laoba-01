@@ -8,13 +8,21 @@ use bitflags::*;
 bitflags! {
     /// page table entry flags
     pub struct PTEFlags: u8 {
+        /// Valid
         const V = 1 << 0;
+        /// Readable
         const R = 1 << 1;
+        /// Writable
         const W = 1 << 2;
+        /// Executable
         const X = 1 << 3;
+        /// User accessible
         const U = 1 << 4;
+        /// Global
         const G = 1 << 5;
+        /// Accessed
         const A = 1 << 6;
+        /// Dirty
         const D = 1 << 7;
     }
 }
