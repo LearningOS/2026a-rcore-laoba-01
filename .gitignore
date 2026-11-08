@@ -13,3 +13,6 @@ os/.gdb_history
 os/vendor/
 *.bak
 students.txt
+notes/
+第一课.pptx
+03-L2学习流程图-rCore内存管理与页表-详细版.png
